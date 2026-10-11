@@ -1,14 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { approvePost, newImagePrompt, removeImage, rewritePost, saveDraft, skipPost, type ActionResult, type PostChanges } from "@/app/actions";
 import { compressImage } from "@/lib/image";
 import { fmtHHMM, formatName, isTextOnly, liveStatus, needsImage, wordCount, type Post } from "@/lib/posts";
 import { Icon } from "./Icon";
 
+export type LocalEdit = { caption: string; date: string; time: string };
+
 export function PostEditor({
   post,
+  edit,
+  onEdit,
   onDone,
   onBack,
   listHidden,
@@ -17,6 +21,8 @@ export function PostEditor({
   onStep,
 }: {
   post: Post;
+  edit?: LocalEdit;
+  onEdit: (edit: LocalEdit | null) => void;
   onDone: () => void;
   onBack: () => void;
   listHidden: boolean;
@@ -25,9 +31,10 @@ export function PostEditor({
   onStep: (delta: number) => void;
 }) {
   const router = useRouter();
-  const [caption, setCaption] = useState(post.caption);
-  const [date, setDate] = useState(post.post_date);
-  const [time, setTime] = useState(fmtHHMM(post.planned_time));
+  const [caption, setCaption] = useState(edit?.caption ?? post.caption);
+  const [date, setDate] = useState(edit?.date ?? post.post_date);
+  const [time, setTime] = useState(edit?.time ?? fmtHHMM(post.planned_time));
+  const syncFromServer = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -48,6 +55,22 @@ export function PostEditor({
     ...(timeDirty ? { date, time } : {}),
   });
 
+  const serverTime = fmtHHMM(post.planned_time);
+
+  useEffect(() => {
+    if (syncFromServer.current) {
+      syncFromServer.current = false;
+      setCaption(post.caption);
+      setDate(post.post_date);
+      setTime(serverTime);
+    }
+  }, [post.caption, post.post_date, serverTime]);
+
+  useEffect(() => {
+    onEdit(dirty ? { caption, date, time } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caption, date, time, dirty]);
+
   async function act(label: string, fn: () => Promise<ActionResult>, after?: "next" | "refresh") {
     setBusy(label);
     setError(null);
@@ -55,10 +78,27 @@ export function PostEditor({
     const r = await fn();
     setBusy(null);
     if (!r.ok) return setError(r.error);
-    if (after === "next") return onDone();
+    if (after === "next") {
+      onEdit(null);
+      return onDone();
+    }
+    if (label === "save" || label === "rewrite") syncFromServer.current = true;
     setNote(r.message || null);
     router.refresh();
   }
+
+  const save = () => act("save", () => saveDraft(post.post_key, changes()));
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (dirty && !busy) save();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   async function upload(file: File) {
     setBusy("upload");
@@ -97,7 +137,17 @@ export function PostEditor({
         <span className="font-semibold capitalize">{formatName(post)}</span>
         <span className="text-sm muted">· {post.pillar}</span>
         <div className="ml-auto flex items-center gap-1">
-          <span className="mr-1 text-xs muted">#{post.post_key}</span>
+          <button
+            onClick={save}
+            disabled={!dirty || !!busy}
+            title={dirty ? "Save changes (Ctrl+S)" : "No unsaved changes"}
+            aria-label="Save changes"
+            className={`btn px-2 py-1 ${dirty ? "btn-ghost border-amber-500/50 text-amber-700 dark:text-amber-300" : "btn-quiet"}`}
+          >
+            <Icon name="save" className="size-4" />
+            <span className="text-xs">{busy === "save" ? "Saving..." : dirty ? "Save" : "Saved"}</span>
+          </button>
+          <span className="mx-1 text-xs muted">#{post.post_key}</span>
           {position.index >= 0 && position.total > 1 && (
             <>
               <button onClick={() => onStep(-1)} disabled={position.index === 0} className="btn btn-quiet px-1.5 py-1" aria-label="Previous post">
@@ -131,12 +181,13 @@ export function PostEditor({
             <span>{wordCount(caption)} words</span>
             {dirty && (
               <>
-                <span className="text-amber-600 dark:text-amber-300">Unsaved changes</span>
-                <button onClick={() => act("save", () => saveDraft(post.post_key, changes()))} disabled={!!busy} className="font-medium text-emerald-600 dark:text-emerald-400">
+                <span className="text-amber-600 dark:text-amber-300">Unsaved changes, kept on this device</span>
+                <button onClick={save} disabled={!!busy} className="font-medium text-emerald-600 dark:text-emerald-400">
                   {busy === "save" ? "Saving..." : "Save"}
                 </button>
                 <button
                   onClick={() => {
+                    if (!confirm("Discard your unsaved changes to this post?")) return;
                     setCaption(post.caption);
                     setDate(post.post_date);
                     setTime(fmtHHMM(post.planned_time));

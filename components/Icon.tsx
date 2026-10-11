@@ -55,6 +55,12 @@ const PATHS = {
   ),
   upload: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />,
   text: <path d="M4 7V4h16v3M9 20h6M12 4v16" />,
+  save: (
+    <>
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <path d="M17 21v-8H7v8M7 3v5h8" />
+    </>
+  ),
   sidebar: (
     <>
       <rect x="3" y="3" width="18" height="18" rx="2" />
