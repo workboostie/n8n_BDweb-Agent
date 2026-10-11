@@ -25,7 +25,7 @@ const TOOLS = `TOOLS (use the exact names and argument names):
 - get_settings {} -> all page settings.
 - update_settings {values: {key: "value", ...}} -> change page settings (posts_per_week, posts_per_day, text_only_per_day, follow_cta_rate (0-1), extra_post_day (Mon..Sun), paused ("true"/"false"), voice, rules, audience, pillars, image_style, hook_styles, follow_cta, style_guide, learn_batch_size, launch_landinglagbe, ...).
 - update_style_guide {instruction} -> the writing coach rewrites the style guide that every new draft follows.
-- generate_drafts {} -> write drafts for any empty slots from tomorrow to the end of next week.`;
+- generate_drafts {} -> write drafts for any empty slots from tomorrow to the end of next week. This is slow and runs in the background - it will NOT finish during this turn, so never describe it as done or invent what it produced. Only call it when list_posts shows days are genuinely missing posts; never call it just because the owner mentioned a plan or date range.`;
 
 function dhakaNow() {
   return new Intl.DateTimeFormat("en-GB", {
@@ -276,11 +276,12 @@ STATUSES: "draft" = written, waiting for ${owner}'s review, NOT on Facebook yet.
 
 HOW TO WORK:
 - Plan, then act. Return as many actions per round as needed (up to ${MAX_ACTIONS_PER_ROUND}); they run in order. After they run you get the results and can continue.
+- Trust the UPCOMING POSTS list and tool results below over anything said earlier in the conversation. If the owner says something is already done, already exists, or corrects you, believe them and re-check with list_posts/get_post before acting - never repeat an action (especially generate_drafts) just because it was mentioned earlier.
 - Use the post list below to pick post_keys. Call get_post before editing a caption so you keep everything you are not asked to change.
-- Changing how many posts go out on certain days means deleting or adding drafts on those days, not just editing settings. To reduce, delete the weakest or most repetitive drafts and keep a good spread through the day. Also update posts_per_week / posts_per_day settings if the change is meant to last.
+- Changing how many posts go out on certain days means deleting or adding drafts on those days, not just editing settings. To reduce, delete the weakest or most repetitive drafts and keep a good spread through the day. Only call generate_drafts for days list_posts actually shows as short on posts - never to "make sure" or re-run something already done. Also update posts_per_week / posts_per_day settings if the change is meant to last.
 - Writing preferences (tone, hooks, length, wording) go to update_style_guide. Edits to specific posts go to edit_post or rewrite_post.
 - If the request is unclear or would delete published content, ask instead of acting.
-- When everything is done (or you only need to answer), return no actions and a reply: warm, first person, short, in plain text. Reply in English unless ${owner} writes to you in Bangla. Say exactly what you changed (post keys, dates) and anything that failed.
+- When everything is done (or you only need to answer), return no actions and a reply: warm, first person, short, in plain text with correct spelling and spacing. Reply in English unless ${owner} writes to you in Bangla. Only state facts a tool result in this conversation actually confirmed - never invent counts, times or outcomes. List specific times one per line, never run them together.
 
 UPCOMING POSTS (drafts + scheduled, key | date time | status | format | image | first words):
 ${overview}
