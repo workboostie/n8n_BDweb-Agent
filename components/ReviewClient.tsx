@@ -21,6 +21,21 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
   const [selectedKey, setSelectedKey] = useState<string | null>(initialKey || posts[0]?.post_key || null);
   const [mobileOpen, setMobileOpen] = useState(!!initialKey);
   const [bulk, setBulk] = useState<string | null>(null);
+  const [listHidden, setListHidden] = useState(false);
+
+  useEffect(() => {
+    try {
+      setListHidden(localStorage.getItem("reviewList") === "hidden");
+    } catch {}
+  }, []);
+
+  function toggleList() {
+    const next = !listHidden;
+    setListHidden(next);
+    try {
+      localStorage.setItem("reviewList", next ? "hidden" : "shown");
+    } catch {}
+  }
 
   const list = useMemo(() => {
     if (filter === "ready") return posts.filter((p) => !needsImage(p));
@@ -61,7 +76,7 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className={`flex flex-wrap items-end justify-between gap-3 ${mobileOpen ? "hidden lg:flex" : ""}`}>
         <div>
           <h1 className="text-2xl font-semibold">Review</h1>
@@ -86,8 +101,12 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
           <p className="text-sm muted">New drafts arrive every Thursday morning, or generate them from Settings.</p>
         </div>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[340px_1fr]">
-          <div className={`panel flex flex-col overflow-hidden lg:sticky lg:top-8 lg:max-h-[calc(100dvh-9rem)] ${mobileOpen ? "hidden lg:flex" : ""}`}>
+        <div className={`grid gap-4 ${listHidden ? "" : "lg:grid-cols-[300px_1fr]"}`}>
+          <div
+            className={`panel flex flex-col overflow-hidden lg:sticky lg:top-6 lg:max-h-[calc(100dvh-8rem)] ${mobileOpen ? "hidden" : ""} ${
+              listHidden ? "lg:hidden" : "lg:flex"
+            }`}
+          >
             <div className="flex gap-1 border-b border-slate-200 p-2 dark:border-white/[0.07]">
               {FILTERS.map((f) => (
                 <button
@@ -140,7 +159,20 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
 
           <div className={mobileOpen ? "" : "hidden lg:block"}>
             {selected ? (
-              <PostEditor key={selected.post_key} post={selected} onDone={moveNext} onBack={() => setMobileOpen(false)} />
+              <PostEditor
+                key={selected.post_key}
+                post={selected}
+                onDone={moveNext}
+                onBack={() => setMobileOpen(false)}
+                listHidden={listHidden}
+                onToggleList={toggleList}
+                position={{ index: list.findIndex((p) => p.post_key === selected.post_key), total: list.length }}
+                onStep={(d) => {
+                  const i = list.findIndex((p) => p.post_key === selected.post_key);
+                  const next = list[i + d];
+                  if (next) setSelectedKey(next.post_key);
+                }}
+              />
             ) : (
               <div className="panel p-10 text-center text-sm muted">Select a post to review.</div>
             )}

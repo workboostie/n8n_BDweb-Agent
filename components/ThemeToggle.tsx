@@ -17,9 +17,14 @@ export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
   }
 
   return (
-    <button onClick={toggle} className="btn btn-quiet px-2.5" aria-label="Toggle theme">
-      <Icon name={dark ? "sun" : "moon"} className="size-[18px]" />
-      {withLabel && <span>{dark ? "Light mode" : "Dark mode"}</span>}
+    <button
+      onClick={toggle}
+      className={`btn btn-quiet px-2.5 ${withLabel ? "w-full justify-start group-data-[collapsed]/shell:justify-center" : ""}`}
+      aria-label="Toggle theme"
+      title={dark ? "Light mode" : "Dark mode"}
+    >
+      <Icon name={dark ? "sun" : "moon"} className="size-[18px] shrink-0" />
+      {withLabel && <span className="group-data-[collapsed]/shell:hidden">{dark ? "Light mode" : "Dark mode"}</span>}
     </button>
   );
 }

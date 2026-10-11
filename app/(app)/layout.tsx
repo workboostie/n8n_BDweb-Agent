@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { Nav } from "@/components/Nav";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { SidebarToggle } from "@/components/SidebarToggle";
 import { Assistant } from "@/components/Assistant";
 import { Icon } from "@/components/Icon";
 import { logout } from "@/app/actions";
@@ -22,11 +24,11 @@ async function loadShell() {
 
 function Logo() {
   return (
-    <div className="flex items-center gap-2.5">
-      <span className="grid size-8 place-items-center rounded-lg bg-emerald-500/15 text-emerald-500 dark:text-emerald-400">
+    <div className="flex items-center gap-2.5 group-data-[collapsed]/shell:lg:justify-center">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-500 dark:text-emerald-400">
         <Icon name="logo" className="size-5" />
       </span>
-      <div className="leading-tight">
+      <div className="leading-tight group-data-[collapsed]/shell:lg:hidden">
         <div className="text-sm font-semibold">WebShop</div>
         <div className="text-[10px] tracking-wider uppercase muted">for business</div>
       </div>
@@ -35,19 +37,22 @@ function Logo() {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const shell = await loadShell();
+  const [shell, jar] = await Promise.all([loadShell(), cookies()]);
+  const collapsed = jar.get("sidebar")?.value === "collapsed";
   return (
-    <div className="min-h-dvh">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-slate-200 bg-white px-4 py-5 lg:flex dark:border-white/[0.07] dark:bg-[#0d1626]">
+    <div id="shell" data-collapsed={collapsed || undefined} className="group/shell min-h-dvh">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white px-4 py-5 transition-[width,padding] duration-200 lg:flex dark:border-white/[0.07] dark:bg-[#0d1626] group-data-[collapsed]/shell:w-16 group-data-[collapsed]/shell:px-2">
         <Logo />
         <div className="mt-8 flex-1">
           <Nav drafts={shell.drafts} />
         </div>
         <div className="space-y-1 border-t border-slate-200 pt-3 dark:border-white/[0.07]">
+          <SidebarToggle />
           <ThemeToggle withLabel />
           <form action={logout}>
-            <button className="btn btn-quiet w-full justify-start px-2.5">
-              <Icon name="logout" className="size-[18px]" /> Log out
+            <button title="Log out" className="btn btn-quiet w-full justify-start px-2.5 group-data-[collapsed]/shell:justify-center">
+              <Icon name="logout" className="size-[18px] shrink-0" />
+              <span className="group-data-[collapsed]/shell:hidden">Log out</span>
             </button>
           </form>
         </div>
@@ -65,8 +70,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <main className="px-4 pt-5 pb-28 lg:ml-60 lg:px-8 lg:pt-8 lg:pb-10">
-        <div className="mx-auto max-w-6xl">{children}</div>
+      <main className="px-4 pt-5 pb-28 transition-[margin] duration-200 lg:ml-60 lg:px-6 lg:pt-6 lg:pb-8 group-data-[collapsed]/shell:lg:ml-16">
+        <div className="mx-auto max-w-[1600px]">{children}</div>
       </main>
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden dark:border-white/[0.07] dark:bg-[#0d1626]/95">

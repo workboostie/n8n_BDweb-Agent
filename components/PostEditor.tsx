@@ -7,7 +7,23 @@ import { compressImage } from "@/lib/image";
 import { fmtHHMM, formatName, isTextOnly, liveStatus, needsImage, wordCount, type Post } from "@/lib/posts";
 import { Icon } from "./Icon";
 
-export function PostEditor({ post, onDone, onBack }: { post: Post; onDone: () => void; onBack: () => void }) {
+export function PostEditor({
+  post,
+  onDone,
+  onBack,
+  listHidden,
+  onToggleList,
+  position,
+  onStep,
+}: {
+  post: Post;
+  onDone: () => void;
+  onBack: () => void;
+  listHidden: boolean;
+  onToggleList: () => void;
+  position: { index: number; total: number };
+  onStep: (delta: number) => void;
+}) {
   const router = useRouter();
   const [caption, setCaption] = useState(post.caption);
   const [date, setDate] = useState(post.post_date);
@@ -69,18 +85,46 @@ export function PostEditor({ post, onDone, onBack }: { post: Post; onDone: () =>
         <button onClick={onBack} className="btn btn-quiet -ml-2 px-2 lg:hidden" aria-label="Back to list">
           <Icon name="back" className="size-5" />
         </button>
+        <button
+          onClick={onToggleList}
+          className="btn btn-quiet -ml-2 hidden px-2 lg:inline-flex"
+          title={listHidden ? "Show post list" : "Hide post list (focus on editor)"}
+          aria-label={listHidden ? "Show post list" : "Hide post list"}
+        >
+          <Icon name="sidebar" className="size-[18px]" />
+        </button>
         <span className="font-semibold capitalize">{formatName(post)}</span>
         <span className="text-sm muted">· {post.pillar}</span>
-        <span className="ml-auto text-xs muted">#{post.post_key}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <span className="mr-1 text-xs muted">#{post.post_key}</span>
+          {position.index >= 0 && position.total > 1 && (
+            <>
+              <button onClick={() => onStep(-1)} disabled={position.index === 0} className="btn btn-quiet px-1.5 py-1" aria-label="Previous post">
+                <Icon name="back" className="size-4" />
+              </button>
+              <span className="text-xs tabular-nums muted">
+                {position.index + 1}/{position.total}
+              </span>
+              <button
+                onClick={() => onStep(1)}
+                disabled={position.index >= position.total - 1}
+                className="btn btn-quiet px-1.5 py-1"
+                aria-label="Next post"
+              >
+                <Icon name="next" className="size-4" />
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
-      <div className="grid gap-5 p-5 md:grid-cols-[1fr_250px]">
-        <div className="min-w-0">
+      <div className="grid gap-5 p-5 xl:grid-cols-[1fr_280px]">
+        <div className="flex min-w-0 flex-col">
           <textarea
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
-            rows={Math.min(22, Math.max(10, caption.split("\n").length + 3))}
-            className="input resize-y p-4 text-[15px] leading-relaxed"
+            rows={Math.max(14, caption.split("\n").length + 3)}
+            className="input min-h-[22rem] flex-1 resize-y p-5 text-base leading-relaxed lg:min-h-[calc(100dvh-20rem)]"
           />
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs muted">
             <span>{wordCount(caption)} words</span>
@@ -105,7 +149,7 @@ export function PostEditor({ post, onDone, onBack }: { post: Post; onDone: () =>
           </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="grid content-start gap-4 sm:grid-cols-2 xl:grid-cols-1">
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-medium muted">
               <Icon name="clock" className="size-3.5" /> Posts on

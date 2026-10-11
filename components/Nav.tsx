@@ -45,18 +45,24 @@ export function Nav({ mobile = false, drafts = 0 }: { mobile?: boolean; drafts?:
         <Link
           key={l.href}
           href={l.href}
-          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+          title={l.label}
+          className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors group-data-[collapsed]/shell:justify-center group-data-[collapsed]/shell:px-0 group-data-[collapsed]/shell:py-2.5 ${
             isActive(l.href)
               ? "bg-emerald-500/10 font-medium text-emerald-700 dark:text-emerald-300"
               : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
           }`}
         >
-          <Icon name={l.icon} className="size-[18px]" />
-          {l.label}
+          <Icon name={l.icon} className="size-[18px] shrink-0" />
+          <span className="group-data-[collapsed]/shell:hidden">{l.label}</span>
           {l.href === "/" && drafts > 0 && (
-            <span className="ml-auto rounded-full bg-emerald-500/15 px-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-              {drafts}
-            </span>
+            <>
+              <span className="ml-auto rounded-full bg-emerald-500/15 px-2 text-xs font-semibold text-emerald-700 group-data-[collapsed]/shell:hidden dark:text-emerald-300">
+                {drafts}
+              </span>
+              <span className="absolute top-1 right-1.5 hidden min-w-4 rounded-full bg-emerald-500 px-1 text-center text-[9px] leading-4 font-semibold text-slate-950 group-data-[collapsed]/shell:block">
+                {drafts}
+              </span>
+            </>
           )}
         </Link>
       ))}
