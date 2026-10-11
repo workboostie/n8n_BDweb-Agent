@@ -125,14 +125,6 @@ export async function generateNow() {
   });
 }
 
-export async function askWriter(text: string) {
-  return run(async () => {
-    if (!text.trim()) throw new Error("Write a message first");
-    const r = await callDashboardApi<{ reply?: string }>("coach", { mode: "chat", text: text.trim() });
-    return r.reply || "Done.";
-  });
-}
-
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export async function saveSettings(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {

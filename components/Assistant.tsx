@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { askWriter } from "@/app/actions";
+import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
 
 type Msg = { from: "me" | "ai"; text: string; error?: boolean };
@@ -9,6 +9,7 @@ type Msg = { from: "me" | "ai"; text: string; error?: boolean };
 const SUGGESTIONS = ["Make the hooks shorter and sharper", "Use more real Bangladeshi examples", "What have you learned about my style?"];
 
 export function Assistant({ version, pending, need }: { version: number; pending: number; need: number }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
@@ -23,9 +24,24 @@ export function Assistant({ version, pending, need }: { version: number; pending
     setText("");
     setMsgs((m) => [...m, { from: "me", text: msg }]);
     setBusy(true);
-    const r = await askWriter(msg);
-    setBusy(false);
-    setMsgs((m) => [...m, r.ok ? { from: "ai", text: r.message || "Done." } : { from: "ai", text: r.error, error: true }]);
+    try {
+      const res = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: msg }),
+        signal: AbortSignal.timeout(110_000),
+      });
+      const j = (await res.json().catch(() => null)) as { ok?: boolean; reply?: string; error?: string } | null;
+      if (res.status === 401) throw new Error("Your login expired. Reload the page and log in again.");
+      if (!res.ok || !j?.ok) throw new Error(j?.error || `Request failed (${res.status})`);
+      setMsgs((m) => [...m, { from: "ai", text: j.reply || "Done." }]);
+      router.refresh();
+    } catch (e) {
+      const err = e instanceof Error ? (e.name === "TimeoutError" ? "The writer took too long to answer. Try again." : e.message) : String(e);
+      setMsgs((m) => [...m, { from: "ai", text: err, error: true }]);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
