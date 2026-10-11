@@ -178,7 +178,7 @@ export function PostEditor({
                 <img
                   src={`/api/image/${encodeURIComponent(post.telegram_file_id)}`}
                   alt=""
-                  className="aspect-square w-full rounded-lg bg-slate-100 object-cover dark:bg-white/5"
+                  className="aspect-[5/3] w-full rounded-lg bg-slate-100 object-cover dark:bg-white/5"
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => fileRef.current?.click()} disabled={!!busy} className="btn btn-ghost px-2 py-1.5 text-xs">
