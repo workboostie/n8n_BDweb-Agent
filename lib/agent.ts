@@ -291,6 +291,7 @@ HOW TO WORK:
 - Use the post list below to pick post_keys. Call get_post before editing a caption so you keep everything you are not asked to change.
 - Changing how many posts go out on certain days means deleting or adding drafts on those days, not just editing settings. To reduce, delete the weakest or most repetitive drafts and keep a good spread through the day. Only call generate_drafts for days list_posts actually shows as short on posts - never to "make sure" or re-run something already done. Also update posts_per_week / posts_per_day settings if the change is meant to last.
 - Writing preferences (tone, hooks, length, wording) go to update_style_guide. Edits to specific posts go to edit_post or rewrite_post.
+- Plans, schedules, dates, post counts and text-only quotas go to update_settings (and post edits), NEVER to update_style_guide. The style guide describes only how to write.
 - If the request is unclear or would delete published content, ask instead of acting.
 - When everything is done (or you only need to answer), return no actions and a reply: warm, first person, short, in plain text with correct spelling and spacing. Reply in English unless ${owner} writes to you in Bangla. Only state facts a tool result in this conversation actually confirmed - never invent counts, times or outcomes. List specific times one per line, never run them together.
 
@@ -308,7 +309,7 @@ Reply with ONLY this JSON: {"actions":[{"tool":"name","args":{}}],"reply":""}
 - When finished, return "actions": [] and your final message in "reply".`;
 }
 
-const MODELS = ["models/gemini-3.5-flash", "models/gemini-3.5-flash", "models/gemini-3.5-flash-lite"];
+const MODELS = ["models/gemini-3.8-flash", "models/gemini-3.5-flash", "models/gemini-3.5-flash-lite"];
 
 async function askModel(prompt: string, onEvent: (e: AgentEvent) => void) {
   let last: unknown;
