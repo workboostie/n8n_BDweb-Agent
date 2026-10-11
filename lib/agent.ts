@@ -26,7 +26,7 @@ const TOOLS = `TOOLS (use the exact names and argument names):
 - get_settings {} -> all page settings.
 - update_settings {values: {key: "value", ...}} -> change page settings (posts_per_week, posts_per_day, text_only_per_day, follow_cta_rate (0-1), extra_post_day (Mon..Sun), paused ("true"/"false"), voice, rules, audience, pillars, image_style, hook_styles, follow_cta, style_guide, learn_batch_size, launch_landinglagbe, ...).
 - update_style_guide {instruction} -> the writing coach rewrites the style guide that every new draft follows.
-- generate_drafts {} -> write drafts for any empty slots from tomorrow to the end of next week. This is slow and runs in the background - it will NOT finish during this turn, so never describe it as done or invent what it produced. Only call it when list_posts shows days are genuinely missing posts; never call it just because the owner mentioned a plan or date range.`;
+- generate_drafts {} -> write drafts for empty slots from tomorrow through the Friday after the coming Saturday (it cannot reach further). Later days are created automatically by the Thursday 8 AM planner run, which writes the next Saturday-Friday batch. This is slow and runs in the background - it will NOT finish during this turn, so never describe it as done or invent what it produced. Only call it when list_posts shows days are genuinely missing posts; never call it just because the owner mentioned a plan or date range.`;
 
 function dhakaNow() {
   return new Intl.DateTimeFormat("en-GB", {
