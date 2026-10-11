@@ -16,7 +16,9 @@ export function Assistant({ version, pending, need }: { version: number; pending
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [msgs, busy]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs, busy]);
 
   async function send(t: string) {
     const msg = t.trim();

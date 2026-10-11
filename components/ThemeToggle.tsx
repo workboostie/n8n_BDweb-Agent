@@ -5,7 +5,9 @@ import { Icon } from "./Icon";
 
 export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
   const [dark, setDark] = useState(true);
-  useEffect(() => setDark(document.documentElement.classList.contains("dark")), []);
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains("dark"));
+  }, []);
 
   function toggle() {
     const next = !dark;
