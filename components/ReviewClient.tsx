@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { approvePost } from "@/app/actions";
-import { dayLabel, fmtHHMM, fmtTime, formatName, hasImage, isTextOnly, liveStatus, needsImage, type Post } from "@/lib/posts";
+import { dayLabel, fmtHHMM, fmtTime, formatName, hasImage, isScheduled, isTextOnly, liveStatus, needsImage, type Post } from "@/lib/posts";
 import { PostEditor, type LocalEdit } from "./PostEditor";
 
 const EDITS_KEY = "reviewEdits";
@@ -62,12 +62,14 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
   }
 
   const list = useMemo(() => {
-    if (filter === "ready") return posts.filter(hasImage);
+    if (filter === "ready") return posts.filter((p) => isScheduled(p) || hasImage(p));
     if (filter === "image") return posts.filter((p) => !hasImage(p));
     return posts;
   }, [posts, filter]);
 
-  const ready = posts.filter(hasImage);
+  const draftCount = posts.filter((p) => !isScheduled(p)).length;
+  const scheduledCount = posts.length - draftCount;
+  const ready = posts.filter((p) => !isScheduled(p) && hasImage(p));
   const selected = posts.find((p) => p.post_key === selectedKey) || null;
 
   useEffect(() => {
@@ -88,7 +90,7 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
   }
 
   async function approveAllReady() {
-    if (!confirm(`Approve and schedule all ${ready.length} posts that have an image?`)) return;
+    if (!confirm(`Approve and schedule all ${ready.length} drafts that have an image?`)) return;
     let failed = 0;
     for (let i = 0; i < ready.length; i++) {
       setBulk(`Scheduling ${i + 1}/${ready.length}...`);
@@ -114,7 +116,7 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
         <div>
           <h1 className="text-2xl font-semibold">Review</h1>
           <p className="mt-1 text-sm muted">
-            {posts.length ? `${posts.length} drafts waiting · ${ready.length} ready with an image` : "You're all caught up."}
+            {posts.length ? `${draftCount} drafts waiting · ${ready.length} with an image · ${scheduledCount} scheduled` : "You're all caught up."}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -180,7 +182,11 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
                               <Icon name="save" className="size-3" /> Edited
                             </span>
                           )}
-                          {expired ? (
+                          {isScheduled(p) ? (
+                            <span className="badge ml-auto bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                              <Icon name="check" className="size-3" /> Scheduled
+                            </span>
+                          ) : expired ? (
                             <span className="badge ml-auto bg-red-500/15 text-red-600 dark:text-red-300">Time passed</span>
                           ) : needsImage(p) ? (
                             <span className="badge ml-auto bg-amber-500/15 text-amber-700 dark:text-amber-300">No image</span>

@@ -66,6 +66,7 @@ export const STATUS_META: Record<Status, { label: string; badge: string; dot: st
 
 export const isTextOnly = (p: Post) => p.image_prompt === "TEXT_ONLY";
 export const hasImage = (p: Post) => !!p.telegram_file_id;
+export const isScheduled = (p: Post) => p.status === "scheduled";
 export const needsImage = (p: Post) => !isTextOnly(p) && !hasImage(p);
 export const formatName = (p: Post) => String(p.hook_style || "").split(":")[0].replace(/_/g, " ") || "post";
 export const wordCount = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);

@@ -54,6 +54,31 @@ export async function approvePost(key: string, changes: PostChanges = {}) {
   });
 }
 
+async function reschedule(key: string, edit: () => Promise<unknown>) {
+  await callDashboardApi("unschedule", { post_key: key });
+  try {
+    await edit();
+    await callDashboardApi("approve", { post_key: key });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Removed from the Facebook schedule, but re-scheduling failed: ${msg}. The post is back in drafts.`);
+  }
+}
+
+export async function updateScheduledPost(key: string, changes: PostChanges) {
+  return run(async () => {
+    await reschedule(key, () => applyChanges(key, changes));
+    return "Updated on Facebook";
+  });
+}
+
+export async function unschedulePost(key: string) {
+  return run(async () => {
+    await callDashboardApi("unschedule", { post_key: key });
+    return "Removed from the Facebook schedule. It's back in drafts.";
+  });
+}
+
 export async function rewritePost(key: string, feedback: string, changes: PostChanges = {}) {
   return run(async () => {
     await applyChanges(key, changes);
@@ -69,9 +94,14 @@ export async function newImagePrompt(key: string) {
   });
 }
 
-export async function removeImage(key: string) {
+export async function removeImage(key: string, scheduled = false) {
   return run(async () => {
-    await updateRows(POSTS_TABLE, draftFilter(key), { telegram_file_id: "" });
+    const clear = () => updateRows(POSTS_TABLE, draftFilter(key), { telegram_file_id: "" });
+    if (scheduled) {
+      await reschedule(key, clear);
+      return "Image removed. Facebook post updated to text only.";
+    }
+    await clear();
     return "Image removed. This will post as text only.";
   });
 }

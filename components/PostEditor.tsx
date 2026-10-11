@@ -2,9 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { approvePost, newImagePrompt, removeImage, rewritePost, saveDraft, skipPost, type ActionResult, type PostChanges } from "@/app/actions";
+import {
+  approvePost,
+  newImagePrompt,
+  removeImage,
+  rewritePost,
+  saveDraft,
+  skipPost,
+  unschedulePost,
+  updateScheduledPost,
+  type ActionResult,
+  type PostChanges,
+} from "@/app/actions";
 import { compressImage } from "@/lib/image";
-import { fmtHHMM, formatName, isTextOnly, liveStatus, needsImage, wordCount, type Post } from "@/lib/posts";
+import { fmtHHMM, fmtTime, formatName, isScheduled, isTextOnly, liveStatus, needsImage, wordCount, type Post } from "@/lib/posts";
 import { Icon } from "./Icon";
 
 export type LocalEdit = { caption: string; date: string; time: string };
@@ -49,6 +60,8 @@ export function PostEditor({
   const expired = liveStatus(post) === "expired";
   const noImage = needsImage(post);
   const textOnly = isTextOnly(post);
+  const scheduled = isScheduled(post);
+  const lockedTitle = scheduled ? "Unschedule the post first to use AI on it" : undefined;
 
   const changes = (): PostChanges => ({
     ...(captionDirty ? { caption } : {}),
@@ -87,7 +100,8 @@ export function PostEditor({
     router.refresh();
   }
 
-  const save = () => act("save", () => saveDraft(post.post_key, changes()));
+  const save = () =>
+    act("save", () => (scheduled ? updateScheduledPost(post.post_key, changes()) : saveDraft(post.post_key, changes())));
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -108,9 +122,11 @@ export function PostEditor({
       const fd = new FormData();
       fd.set("post_key", post.post_key);
       fd.set("file", blob, `${post.post_key}.jpg`);
+      if (scheduled) fd.set("scheduled", "1");
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || j.ok === false) throw new Error(j.error || `Upload failed (${res.status})`);
+      if (j.message) setNote(j.message);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -140,7 +156,7 @@ export function PostEditor({
           <button
             onClick={save}
             disabled={!dirty || !!busy}
-            title={dirty ? "Save changes (Ctrl+S)" : "No unsaved changes"}
+            title={dirty ? (scheduled ? "Save and update the scheduled Facebook post (Ctrl+S)" : "Save changes (Ctrl+S)") : "No unsaved changes"}
             aria-label="Save changes"
             className={`btn px-2 py-1 ${dirty ? "btn-ghost border-amber-500/50 text-amber-700 dark:text-amber-300" : "btn-quiet"}`}
           >
@@ -208,9 +224,15 @@ export function PostEditor({
             </div>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="input" />
-            <p className={`text-xs ${expired && !timeDirty ? "text-red-600 dark:text-red-300" : "muted"}`}>
-              {expired && !timeDirty ? "This time has passed. Pick a new one, or it posts 15 min after approval." : "Picked automatically. Change it if you like."}
-            </p>
+            {scheduled ? (
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                Scheduled on Facebook for {fmtTime(post.planned_time)}. Changing it updates Facebook when you save.
+              </p>
+            ) : (
+              <p className={`text-xs ${expired && !timeDirty ? "text-red-600 dark:text-red-300" : "muted"}`}>
+                {expired && !timeDirty ? "This time has passed. Pick a new one, or it posts 15 min after approval." : "Picked automatically. Change it if you like."}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -236,7 +258,13 @@ export function PostEditor({
                     <Icon name="upload" className="size-3.5" /> {busy === "upload" ? "Uploading..." : "Replace"}
                   </button>
                   <button
-                    onClick={() => confirm("Remove the image? The post will go out as text only.") && act("remove", () => removeImage(post.post_key))}
+                    onClick={() =>
+                      confirm(
+                        scheduled
+                          ? "Remove the image? The scheduled Facebook post will be updated to text only."
+                          : "Remove the image? The post will go out as text only.",
+                      ) && act("remove", () => removeImage(post.post_key, scheduled))
+                    }
                     disabled={!!busy}
                     className="btn btn-ghost px-2 py-1.5 text-xs hover:text-red-500"
                   >
@@ -251,7 +279,12 @@ export function PostEditor({
                 </p>
                 <p className="text-xs muted">Want an image anyway? Get a prompt or upload your own.</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => act("prompt", () => newImagePrompt(post.post_key))} disabled={!!busy} className="btn btn-ghost px-2 py-1.5 text-xs">
+                  <button
+                    onClick={() => act("prompt", () => newImagePrompt(post.post_key))}
+                    disabled={!!busy || scheduled}
+                    title={lockedTitle}
+                    className="btn btn-ghost px-2 py-1.5 text-xs"
+                  >
                     <Icon name="sparkles" className="size-3.5" /> {busy === "prompt" ? "Writing..." : "Get prompt"}
                   </button>
                   <button onClick={() => fileRef.current?.click()} disabled={!!busy} className="btn btn-ghost px-2 py-1.5 text-xs">
@@ -314,24 +347,46 @@ export function PostEditor({
       )}
 
       <footer className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-5 py-4 dark:border-white/[0.07]">
-        <button
-          onClick={() => act("approve", () => approvePost(post.post_key, changes()), "next")}
-          disabled={!!busy || !caption.trim()}
-          className="btn btn-primary"
-        >
-          <Icon name="check" className="size-4" />
-          {busy === "approve" ? "Scheduling..." : `${dirty ? "Save & approve" : "Approve"}${post.telegram_file_id ? "" : " as text"}`}
-        </button>
-        <button onClick={() => setRewriteOpen((v) => !v)} disabled={!!busy} className="btn btn-ghost">
+        {scheduled ? (
+          <button onClick={save} disabled={!!busy || !dirty || !caption.trim()} className="btn btn-primary">
+            <Icon name="send" className="size-4" />
+            {busy === "save" ? "Updating Facebook..." : dirty ? "Save & update Facebook" : "Scheduled on Facebook"}
+          </button>
+        ) : (
+          <button
+            onClick={() => act("approve", () => approvePost(post.post_key, changes()), "next")}
+            disabled={!!busy || !caption.trim()}
+            className="btn btn-primary"
+          >
+            <Icon name="check" className="size-4" />
+            {busy === "approve" ? "Scheduling..." : `${dirty ? "Save & approve" : "Approve"}${post.telegram_file_id ? "" : " as text"}`}
+          </button>
+        )}
+        <button onClick={() => setRewriteOpen((v) => !v)} disabled={!!busy || scheduled} title={lockedTitle} className="btn btn-ghost">
           <Icon name="sparkles" className="size-4" /> Rewrite with AI
         </button>
-        <button onClick={() => act("prompt", () => newImagePrompt(post.post_key))} disabled={!!busy} className="btn btn-ghost">
+        <button onClick={() => act("prompt", () => newImagePrompt(post.post_key))} disabled={!!busy || scheduled} title={lockedTitle} className="btn btn-ghost">
           <Icon name="image" className="size-4" /> {busy === "prompt" ? "Writing..." : "New image prompt"}
         </button>
-        <button onClick={() => act("skip", () => skipPost(post.post_key), "next")} disabled={!!busy} className="btn btn-quiet ml-auto hover:text-red-500">
-          {busy === "skip" ? "Skipping..." : "Skip"}
-        </button>
-        {noImage && <p className="w-full text-xs text-amber-600 dark:text-amber-300">The AI suggested an image for this post. Approving now posts it as text only.</p>}
+        {scheduled ? (
+          <button
+            onClick={() => confirm("Remove this post from the Facebook schedule? It goes back to drafts.") && act("unschedule", () => unschedulePost(post.post_key))}
+            disabled={!!busy}
+            className="btn btn-quiet ml-auto hover:text-red-500"
+          >
+            {busy === "unschedule" ? "Unscheduling..." : "Unschedule"}
+          </button>
+        ) : (
+          <button onClick={() => act("skip", () => skipPost(post.post_key), "next")} disabled={!!busy} className="btn btn-quiet ml-auto hover:text-red-500">
+            {busy === "skip" ? "Skipping..." : "Skip"}
+          </button>
+        )}
+        {scheduled && dirty && (
+          <p className="w-full text-xs muted">Saving removes the scheduled Facebook post and schedules your edited version in its place.</p>
+        )}
+        {!scheduled && noImage && (
+          <p className="w-full text-xs text-amber-600 dark:text-amber-300">The AI suggested an image for this post. Approving now posts it as text only.</p>
+        )}
       </footer>
     </article>
   );
