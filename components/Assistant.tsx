@@ -16,6 +16,7 @@ const COUNTED: Record<string, string> = {
   approve_post: "Scheduled",
   unschedule_post: "Unscheduled",
   remove_image: "Removed the image from",
+  make_text_only: "Made # text-only",
   new_image_prompt: "New image prompt for",
 };
 const ONCE: Record<string, string> = {
@@ -29,7 +30,8 @@ function summarize(steps: Step[], secs: number) {
   for (const s of steps) if (s.ok && s.tool) counts.set(s.tool, (counts.get(s.tool) || 0) + 1);
   const parts: string[] = [];
   for (const [tool, n] of counts) {
-    if (COUNTED[tool]) parts.push(`${COUNTED[tool]} ${n} post${n === 1 ? "" : "s"}`);
+    const posts = `${n} post${n === 1 ? "" : "s"}`;
+    if (COUNTED[tool]) parts.push(COUNTED[tool].includes("#") ? COUNTED[tool].replace("#", posts) : `${COUNTED[tool]} ${posts}`);
     else if (ONCE[tool]) parts.push(ONCE[tool]);
   }
   const failed = steps.filter((s) => !s.ok).length;

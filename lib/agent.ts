@@ -20,8 +20,9 @@ const TOOLS = `TOOLS (use the exact names and argument names):
 - restore_post {post_key} -> brings a deleted/skipped post back to drafts.
 - approve_post {post_key} -> schedule a draft on Facebook at its planned time.
 - unschedule_post {post_key} -> take a scheduled post off Facebook and back to drafts.
-- remove_image {post_key} -> remove the image so it posts as text only.
-- new_image_prompt {post_key} -> write a fresh image prompt. Drafts only.
+- remove_image {post_key} -> delete the uploaded image file only (the post keeps its image prompt and still counts as an image post).
+- make_text_only {post_key} -> turn a post into a text-only post (no image at all). Use this when the owner wants text-only posts. Usually follow it with rewrite_post to give the caption a hook that works without a picture.
+- new_image_prompt {post_key} -> write a fresh image prompt; also turns a text-only post back into an image post. Drafts only.
 - get_settings {} -> all page settings.
 - update_settings {values: {key: "value", ...}} -> change page settings (posts_per_week, posts_per_day, text_only_per_day, follow_cta_rate (0-1), extra_post_day (Mon..Sun), paused ("true"/"false"), voice, rules, audience, pillars, image_style, hook_styles, follow_cta, style_guide, learn_batch_size, launch_landinglagbe, ...).
 - update_style_guide {instruction} -> the writing coach rewrites the style guide that every new draft follows.
@@ -154,6 +155,14 @@ async function runTool(tool: string, args: Record<string, unknown>): Promise<str
       else throw new Error(`${p.post_key} is ${statusOf(p)}`);
       return `Removed the image from ${p.post_key}`;
     }
+    case "make_text_only": {
+      const p = await findPost(args.post_key);
+      const set = () => updateRows(POSTS_TABLE, draftFilter(p.post_key), { image_prompt: "TEXT_ONLY", telegram_file_id: "" });
+      if (p.status === "scheduled") await reschedule(p.post_key, set);
+      else if (p.status === "draft") await set();
+      else throw new Error(`${p.post_key} is ${statusOf(p)}`);
+      return `Made ${p.post_key} a text-only post`;
+    }
     case "new_image_prompt": {
       const p = await findPost(args.post_key);
       if (p.status !== "draft") throw new Error(`${p.post_key} is ${statusOf(p)}. Unschedule it first.`);
@@ -248,6 +257,8 @@ function describe(tool: string, args: Record<string, unknown>) {
       return `Taking post${k} off Facebook`;
     case "remove_image":
       return `Removing the image from post${k}`;
+    case "make_text_only":
+      return `Making post${k} text-only`;
     case "new_image_prompt":
       return `Writing a new image prompt for post${k}`;
     case "update_settings":
