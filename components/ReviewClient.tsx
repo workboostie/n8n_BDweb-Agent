@@ -9,18 +9,21 @@ import { PostEditor, type LocalEdit } from "./PostEditor";
 const EDITS_KEY = "reviewEdits";
 import { Icon } from "./Icon";
 
-type Filter = "all" | "ready" | "image";
+type Filter = "review" | "ready" | "image";
 
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "All" },
+  { id: "review", label: "To review" },
   { id: "ready", label: "Ready" },
   { id: "image", label: "No image" },
 ];
 
 export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; today: string; initialKey?: string }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<Filter>("all");
-  const [selectedKey, setSelectedKey] = useState<string | null>(initialKey || posts[0]?.post_key || null);
+  const initialPost = posts.find((p) => p.post_key === initialKey);
+  const [filter, setFilter] = useState<Filter>(initialPost && isScheduled(initialPost) ? "ready" : "review");
+  const [selectedKey, setSelectedKey] = useState<string | null>(
+    initialPost?.post_key || posts.find((p) => !isScheduled(p))?.post_key || null,
+  );
   const [mobileOpen, setMobileOpen] = useState(!!initialKey);
   const [bulk, setBulk] = useState<string | null>(null);
   const [listHidden, setListHidden] = useState(false);
@@ -63,14 +66,14 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
 
   const list = useMemo(() => {
     if (filter === "ready") return posts.filter((p) => isScheduled(p) || hasImage(p));
-    if (filter === "image") return posts.filter((p) => !hasImage(p));
-    return posts;
+    if (filter === "image") return posts.filter((p) => !isScheduled(p) && !hasImage(p));
+    return posts.filter((p) => !isScheduled(p));
   }, [posts, filter]);
 
   const draftCount = posts.filter((p) => !isScheduled(p)).length;
   const scheduledCount = posts.length - draftCount;
   const ready = posts.filter((p) => !isScheduled(p) && hasImage(p));
-  const selected = posts.find((p) => p.post_key === selectedKey) || null;
+  const selected = list.find((p) => p.post_key === selectedKey) || null;
 
   useEffect(() => {
     if (!selected && list.length) setSelectedKey(list[0].post_key);
