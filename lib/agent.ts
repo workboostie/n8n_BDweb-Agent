@@ -297,6 +297,25 @@ Reply with ONLY this JSON: {"actions":[{"tool":"name","args":{}}],"reply":""}
 - When finished, return "actions": [] and your final message in "reply".`;
 }
 
+const MODELS = ["models/gemini-3.5-flash", "models/gemini-3.5-flash", "models/gemini-3.5-flash-lite"];
+
+async function askModel(prompt: string, onEvent: (e: AgentEvent) => void) {
+  let last: unknown;
+  for (let i = 0; i < MODELS.length; i++) {
+    try {
+      return await callDashboardApi<{ text?: string }>("llm", { text: prompt, model: MODELS[i] });
+    } catch (e) {
+      last = e;
+      if (i < MODELS.length - 1) {
+        onEvent({ type: "status", text: "The AI service is busy, retrying" });
+        await new Promise((r) => setTimeout(r, 4000));
+      }
+    }
+  }
+  const msg = last instanceof Error ? last.message : String(last);
+  throw new Error(/unavailable|overload|503|429|quota/i.test(msg) ? "Google's AI service is overloaded right now. Wait a minute and send your message again." : msg);
+}
+
 export async function runAgent(history: ChatMsg[], onEvent: (e: AgentEvent) => void = () => {}): Promise<{ reply: string; steps: AgentStep[] }> {
   onEvent({ type: "status", text: "Reading your posts" });
   const [cfg, posts] = await Promise.all([getConfig(), getPosts()]);
@@ -308,7 +327,17 @@ export async function runAgent(history: ChatMsg[], onEvent: (e: AgentEvent) => v
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
     onEvent({ type: "status", text: round === 1 ? "Thinking" : "Checking the results" });
-    const r = await callDashboardApi<{ text?: string }>("llm", { text: buildPrompt(owner, cfg.page_name || "", history, overview, steps, round) });
+    let r: { text?: string };
+    try {
+      r = await askModel(buildPrompt(owner, cfg.page_name || "", history, overview, steps, round), onEvent);
+    } catch (e) {
+      const changed = steps.filter((s) => !READ_TOOLS.has(s.tool));
+      if (!changed.length) throw e;
+      return {
+        reply: `The AI service went down before I could finish, but the ${changed.length} change${changed.length === 1 ? "" : "s"} listed below went through. Send "continue" and I'll pick up where I stopped.`,
+        steps,
+      };
+    }
     const out = parseJson(String(r.text || ""));
     const actions = Array.isArray(out.actions) ? out.actions.slice(0, MAX_ACTIONS_PER_ROUND) : [];
     if (!actions.length) return { reply: String(out.reply || "Done.").trim(), steps };
