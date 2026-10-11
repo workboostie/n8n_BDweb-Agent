@@ -192,15 +192,72 @@ async function runTool(tool: string, args: Record<string, unknown>): Promise<str
   }
 }
 
-function parseJson(text: string): { actions?: { tool: string; args?: Record<string, unknown> }[]; reply?: string } {
+type AgentOut = { actions?: { tool: string; args?: Record<string, unknown> }[]; reply?: string };
+
+function tryParse<T>(s: string): T | null {
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return null;
+  }
+}
+
+function decodeEscapes(s: string) {
+  return (
+    tryParse<string>(`"${s.replace(/\r?\n/g, "\\n")}"`) ??
+    s.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/\\n/g, "\n").replace(/\\"/g, '"')
+  );
+}
+
+function parseJson(text: string): AgentOut {
   const t = text.replace(/```(?:json)?/gi, "").trim();
   const start = t.indexOf("{");
   const end = t.lastIndexOf("}");
   if (start < 0 || end <= start) return { reply: t };
-  try {
-    return JSON.parse(t.slice(start, end + 1));
-  } catch {
-    return { reply: t };
+  const body = t.slice(start, end + 1);
+  const out = tryParse<AgentOut>(body) ?? tryParse<AgentOut>(body.replace(/[\r\n\t]+/g, " "));
+  if (out) return out;
+  const m = body.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+  return { reply: m ? decodeEscapes(m[1]) : decodeEscapes(t) };
+}
+
+export type AgentEvent = { type: "status"; text: string } | { type: "step"; tool: string; ok: boolean; text: string };
+
+const READ_TOOLS = new Set(["list_posts", "get_post", "get_settings"]);
+
+function describe(tool: string, args: Record<string, unknown>) {
+  const k = args.post_key ? ` ${String(args.post_key)}` : "";
+  switch (tool) {
+    case "list_posts":
+      return "Looking through the posts";
+    case "get_post":
+      return `Reading post${k}`;
+    case "get_settings":
+      return "Checking settings";
+    case "edit_post":
+      return `Editing post${k}`;
+    case "rewrite_post":
+      return `Rewriting post${k}`;
+    case "delete_post":
+      return `Deleting post${k}`;
+    case "restore_post":
+      return `Restoring post${k}`;
+    case "approve_post":
+      return `Scheduling post${k} on Facebook`;
+    case "unschedule_post":
+      return `Taking post${k} off Facebook`;
+    case "remove_image":
+      return `Removing the image from post${k}`;
+    case "new_image_prompt":
+      return `Writing a new image prompt for post${k}`;
+    case "update_settings":
+      return "Updating settings";
+    case "update_style_guide":
+      return "Updating the style guide";
+    case "generate_drafts":
+      return "Starting draft generation";
+    default:
+      return `Running ${tool}`;
   }
 }
 
@@ -223,7 +280,7 @@ HOW TO WORK:
 - Changing how many posts go out on certain days means deleting or adding drafts on those days, not just editing settings. To reduce, delete the weakest or most repetitive drafts and keep a good spread through the day. Also update posts_per_week / posts_per_day settings if the change is meant to last.
 - Writing preferences (tone, hooks, length, wording) go to update_style_guide. Edits to specific posts go to edit_post or rewrite_post.
 - If the request is unclear or would delete published content, ask instead of acting.
-- When everything is done (or you only need to answer), return no actions and a reply: warm, first person, simple English, short. Say exactly what you changed (post keys, dates) and anything that failed.
+- When everything is done (or you only need to answer), return no actions and a reply: warm, first person, short, in plain text. Reply in English unless ${owner} writes to you in Bangla. Say exactly what you changed (post keys, dates) and anything that failed.
 
 UPCOMING POSTS (drafts + scheduled, key | date time | status | format | image | first words):
 ${overview}
@@ -239,7 +296,8 @@ Reply with ONLY this JSON: {"actions":[{"tool":"name","args":{}}],"reply":""}
 - When finished, return "actions": [] and your final message in "reply".`;
 }
 
-export async function runAgent(history: ChatMsg[]): Promise<{ reply: string; steps: AgentStep[] }> {
+export async function runAgent(history: ChatMsg[], onEvent: (e: AgentEvent) => void = () => {}): Promise<{ reply: string; steps: AgentStep[] }> {
+  onEvent({ type: "status", text: "Reading your posts" });
   const [cfg, posts] = await Promise.all([getConfig(), getPosts()]);
   const owner = cfg.owner_name || "the owner";
   const today = dhakaDate();
@@ -248,19 +306,24 @@ export async function runAgent(history: ChatMsg[]): Promise<{ reply: string; ste
   const steps: AgentStep[] = [];
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
+    onEvent({ type: "status", text: round === 1 ? "Thinking" : "Checking the results" });
     const r = await callDashboardApi<{ text?: string }>("llm", { text: buildPrompt(owner, cfg.page_name || "", history, overview, steps, round) });
     const out = parseJson(String(r.text || ""));
     const actions = Array.isArray(out.actions) ? out.actions.slice(0, MAX_ACTIONS_PER_ROUND) : [];
     if (!actions.length) return { reply: String(out.reply || "Done.").trim(), steps };
     for (const a of actions) {
       const args = a.args && typeof a.args === "object" ? a.args : {};
+      onEvent({ type: "status", text: describe(a.tool, args) });
+      let step: AgentStep;
       try {
-        steps.push({ tool: a.tool, args, ok: true, result: await runTool(a.tool, args) });
+        step = { tool: a.tool, args, ok: true, result: await runTool(a.tool, args) };
       } catch (e) {
-        steps.push({ tool: a.tool, args, ok: false, result: e instanceof Error ? e.message : String(e) });
+        step = { tool: a.tool, args, ok: false, result: e instanceof Error ? e.message : String(e) };
       }
+      steps.push(step);
+      if (!READ_TOOLS.has(step.tool)) onEvent({ type: "step", tool: step.tool, ok: step.ok, text: step.result });
     }
-    if (actions.some((a) => a.tool !== "list_posts" && a.tool !== "get_post" && a.tool !== "get_settings")) {
+    if (actions.some((a) => !READ_TOOLS.has(a.tool))) {
       const fresh = sortPosts(await getPosts()).filter((p) => p.post_date >= today && (p.status === "draft" || p.status === "scheduled"));
       overview = fresh.map(line).join("\n") || "(none)";
     }
