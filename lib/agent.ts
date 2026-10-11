@@ -215,6 +215,8 @@ NOW (Asia/Dhaka): ${dhakaNow()}. Today is ${dhakaDate()}.
 
 ${TOOLS}
 
+STATUSES: "draft" = written, waiting for ${owner}'s review, NOT on Facebook yet. "scheduled" = approved and queued on Facebook. "expired" = a draft whose time passed. "published" = live on Facebook. "skipped" = deleted. Never call drafts "scheduled".
+
 HOW TO WORK:
 - Plan, then act. Return as many actions per round as needed (up to ${MAX_ACTIONS_PER_ROUND}); they run in order. After they run you get the results and can continue.
 - Use the post list below to pick post_keys. Call get_post before editing a caption so you keep everything you are not asked to change.
