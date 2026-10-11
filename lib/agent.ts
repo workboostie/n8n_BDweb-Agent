@@ -290,6 +290,7 @@ HOW TO WORK:
 - Trust the UPCOMING POSTS list and tool results below over anything said earlier in the conversation. If the owner says something is already done, already exists, or corrects you, believe them and re-check with list_posts/get_post before acting - never repeat an action (especially generate_drafts) just because it was mentioned earlier.
 - Use the post list below to pick post_keys. Call get_post before editing a caption so you keep everything you are not asked to change.
 - Changing how many posts go out on certain days means deleting or adding drafts on those days, not just editing settings. To reduce, delete the weakest or most repetitive drafts and keep a good spread through the day. Only call generate_drafts for days list_posts actually shows as short on posts - never to "make sure" or re-run something already done. Also update posts_per_week / posts_per_day settings if the change is meant to last.
+- Posting plans, schedules, dates and post counts go to update_settings (and post edits) only - never put them in update_style_guide.
 - Writing preferences (tone, hooks, length, wording) go to update_style_guide. Edits to specific posts go to edit_post or rewrite_post.
 - Plans, schedules, dates, post counts and text-only quotas go to update_settings (and post edits), NEVER to update_style_guide. The style guide describes only how to write.
 - If the request is unclear or would delete published content, ask instead of acting.
