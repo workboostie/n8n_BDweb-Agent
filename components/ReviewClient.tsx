@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { approvePost } from "@/app/actions";
-import { dayLabel, fmtTime, formatName, liveStatus, needsImage, type Post } from "@/lib/posts";
+import { dayLabel, fmtTime, formatName, hasImage, isTextOnly, liveStatus, needsImage, type Post } from "@/lib/posts";
 import { PostEditor } from "./PostEditor";
 import { Icon } from "./Icon";
 
@@ -12,7 +12,7 @@ type Filter = "all" | "ready" | "image";
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "ready", label: "Ready" },
-  { id: "image", label: "Needs image" },
+  { id: "image", label: "No image" },
 ];
 
 export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; today: string; initialKey?: string }) {
@@ -38,12 +38,12 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
   }
 
   const list = useMemo(() => {
-    if (filter === "ready") return posts.filter((p) => !needsImage(p));
-    if (filter === "image") return posts.filter(needsImage);
+    if (filter === "ready") return posts.filter(hasImage);
+    if (filter === "image") return posts.filter((p) => !hasImage(p));
     return posts;
   }, [posts, filter]);
 
-  const ready = posts.filter((p) => !needsImage(p));
+  const ready = posts.filter(hasImage);
   const selected = posts.find((p) => p.post_key === selectedKey) || null;
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
   }
 
   async function approveAllReady() {
-    if (!confirm(`Approve and schedule all ${ready.length} posts that have an image (or are text-only)?`)) return;
+    if (!confirm(`Approve and schedule all ${ready.length} posts that have an image?`)) return;
     let failed = 0;
     for (let i = 0; i < ready.length; i++) {
       setBulk(`Scheduling ${i + 1}/${ready.length}...`);
@@ -81,7 +81,7 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
         <div>
           <h1 className="text-2xl font-semibold">Review</h1>
           <p className="mt-1 text-sm muted">
-            {posts.length ? `${posts.length} drafts waiting · ${ready.length} ready to approve` : "You're all caught up."}
+            {posts.length ? `${posts.length} drafts waiting · ${ready.length} ready with an image` : "You're all caught up."}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -144,8 +144,11 @@ export function ReviewClient({ posts, today, initialKey }: { posts: Post[]; toda
                           <span className="truncate capitalize muted">{formatName(p)}</span>
                           {expired ? (
                             <span className="badge ml-auto bg-red-500/15 text-red-600 dark:text-red-300">Time passed</span>
+                          ) : needsImage(p) ? (
+                            <span className="badge ml-auto bg-amber-500/15 text-amber-700 dark:text-amber-300">No image</span>
                           ) : (
-                            needsImage(p) && <span className="badge ml-auto bg-amber-500/15 text-amber-700 dark:text-amber-300">No image</span>
+                            !hasImage(p) &&
+                            isTextOnly(p) && <span className="badge ml-auto bg-slate-500/15 text-slate-600 dark:text-slate-300">Text</span>
                           )}
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm text-slate-700 dark:text-slate-300">{p.caption.split("\n")[0]}</p>

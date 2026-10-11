@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { approvePost, newImagePrompt, rewritePost, saveDraft, skipPost, type ActionResult, type PostChanges } from "@/app/actions";
+import { approvePost, newImagePrompt, removeImage, rewritePost, saveDraft, skipPost, type ActionResult, type PostChanges } from "@/app/actions";
 import { compressImage } from "@/lib/image";
 import { fmtHHMM, formatName, isTextOnly, liveStatus, needsImage, wordCount, type Post } from "@/lib/posts";
 import { Icon } from "./Icon";
@@ -41,6 +41,7 @@ export function PostEditor({
   const dirty = captionDirty || timeDirty;
   const expired = liveStatus(post) === "expired";
   const noImage = needsImage(post);
+  const textOnly = isTextOnly(post);
 
   const changes = (): PostChanges => ({
     ...(captionDirty ? { caption } : {}),
@@ -164,12 +165,14 @@ export function PostEditor({
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-medium muted">
               <Icon name="image" className="size-3.5" /> Image
+              <span
+                className={`badge ml-auto ${textOnly ? "bg-slate-500/15 text-slate-600 dark:text-slate-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"}`}
+                title="What the AI recommends for this post. You can change it."
+              >
+                <Icon name="sparkles" className="size-3" /> AI: {textOnly ? "text only" : "with image"}
+              </span>
             </div>
-            {isTextOnly(post) ? (
-              <div className="flex items-center gap-2 rounded-lg bg-slate-100 p-3 text-sm muted dark:bg-white/5">
-                <Icon name="text" className="size-4" /> Text-only post
-              </div>
-            ) : post.telegram_file_id ? (
+            {post.telegram_file_id ? (
               <div className="space-y-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -177,12 +180,37 @@ export function PostEditor({
                   alt=""
                   className="aspect-square w-full rounded-lg bg-slate-100 object-cover dark:bg-white/5"
                 />
-                <button onClick={() => fileRef.current?.click()} disabled={!!busy} className="btn btn-ghost w-full py-1.5 text-xs">
-                  <Icon name="upload" className="size-3.5" /> {busy === "upload" ? "Uploading..." : "Replace image"}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => fileRef.current?.click()} disabled={!!busy} className="btn btn-ghost px-2 py-1.5 text-xs">
+                    <Icon name="upload" className="size-3.5" /> {busy === "upload" ? "Uploading..." : "Replace"}
+                  </button>
+                  <button
+                    onClick={() => confirm("Remove the image? The post will go out as text only.") && act("remove", () => removeImage(post.post_key))}
+                    disabled={!!busy}
+                    className="btn btn-ghost px-2 py-1.5 text-xs hover:text-red-500"
+                  >
+                    <Icon name="x" className="size-3.5" /> {busy === "remove" ? "Removing..." : "Remove"}
+                  </button>
+                </div>
+              </div>
+            ) : textOnly ? (
+              <div className="space-y-2 rounded-lg bg-slate-100 p-3 dark:bg-white/5">
+                <p className="flex items-center gap-2 text-sm muted">
+                  <Icon name="text" className="size-4" /> Posts as text only.
+                </p>
+                <p className="text-xs muted">Want an image anyway? Get a prompt or upload your own.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => act("prompt", () => newImagePrompt(post.post_key))} disabled={!!busy} className="btn btn-ghost px-2 py-1.5 text-xs">
+                    <Icon name="sparkles" className="size-3.5" /> {busy === "prompt" ? "Writing..." : "Get prompt"}
+                  </button>
+                  <button onClick={() => fileRef.current?.click()} disabled={!!busy} className="btn btn-ghost px-2 py-1.5 text-xs">
+                    <Icon name="upload" className="size-3.5" /> {busy === "upload" ? "..." : "Upload"}
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-2 rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 p-3">
+                <p className="text-xs text-amber-700 dark:text-amber-300">No image yet. Without one, it posts as text only.</p>
                 <p className="line-clamp-5 text-xs text-slate-600 dark:text-slate-300">{post.image_prompt}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -237,25 +265,22 @@ export function PostEditor({
       <footer className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-5 py-4 dark:border-white/[0.07]">
         <button
           onClick={() => act("approve", () => approvePost(post.post_key, changes()), "next")}
-          disabled={!!busy || noImage || !caption.trim()}
-          title={noImage ? "Add an image first" : undefined}
+          disabled={!!busy || !caption.trim()}
           className="btn btn-primary"
         >
           <Icon name="check" className="size-4" />
-          {busy === "approve" ? "Scheduling..." : dirty ? "Save & approve" : "Approve & schedule"}
+          {busy === "approve" ? "Scheduling..." : `${dirty ? "Save & approve" : "Approve"}${post.telegram_file_id ? "" : " as text"}`}
         </button>
         <button onClick={() => setRewriteOpen((v) => !v)} disabled={!!busy} className="btn btn-ghost">
           <Icon name="sparkles" className="size-4" /> Rewrite with AI
         </button>
-        {!isTextOnly(post) && (
-          <button onClick={() => act("prompt", () => newImagePrompt(post.post_key))} disabled={!!busy} className="btn btn-ghost">
-            <Icon name="image" className="size-4" /> {busy === "prompt" ? "Writing..." : "New image prompt"}
-          </button>
-        )}
+        <button onClick={() => act("prompt", () => newImagePrompt(post.post_key))} disabled={!!busy} className="btn btn-ghost">
+          <Icon name="image" className="size-4" /> {busy === "prompt" ? "Writing..." : "New image prompt"}
+        </button>
         <button onClick={() => act("skip", () => skipPost(post.post_key), "next")} disabled={!!busy} className="btn btn-quiet ml-auto hover:text-red-500">
           {busy === "skip" ? "Skipping..." : "Skip"}
         </button>
-        {noImage && <p className="w-full text-xs text-amber-600 dark:text-amber-300">Add an image before approving.</p>}
+        {noImage && <p className="w-full text-xs text-amber-600 dark:text-amber-300">The AI suggested an image for this post. Approving now posts it as text only.</p>}
       </footer>
     </article>
   );

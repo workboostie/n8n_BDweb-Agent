@@ -69,6 +69,13 @@ export async function newImagePrompt(key: string) {
   });
 }
 
+export async function removeImage(key: string) {
+  return run(async () => {
+    await updateRows(POSTS_TABLE, draftFilter(key), { telegram_file_id: "" });
+    return "Image removed. This will post as text only.";
+  });
+}
+
 export async function skipPost(key: string) {
   return run(async () => {
     await updateRows(POSTS_TABLE, draftFilter(key), { status: "rejected" });
