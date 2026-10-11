@@ -6,8 +6,9 @@ export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { messages?: ChatMsg[] };
-    const history = (Array.isArray(body.messages) ? body.messages : [])
+    const body = (await req.json().catch(() => ({}))) as { messages?: ChatMsg[]; text?: string };
+    const raw: ChatMsg[] = Array.isArray(body.messages) ? body.messages : body.text ? [{ from: "me", text: String(body.text) }] : [];
+    const history = raw
       .filter((m) => m && (m.from === "me" || m.from === "ai") && typeof m.text === "string" && m.text.trim())
       .slice(-16);
     if (!history.length || history[history.length - 1].from !== "me") {
