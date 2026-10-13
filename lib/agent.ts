@@ -13,6 +13,8 @@ const ROUTER_MODELS = ["models/gemini-3.5-flash-lite", "models/gemini-3.5-flash-
 const PROTECTED_KEYS = new Set(["dashboard_secret", "owner_chat_id", "page_id", "meta_app_id", "dashboard_url", "coach_last_reply", "style_version", "style_exemplars"]);
 
 const LOOKUP_TOOLS = new Set(["list_posts", "get_post", "get_settings"]);
+const GLOBAL_FIRST = new Set(["update_style_guide", "update_settings"]);
+const PROMISES_WORK = /\b(rewrit|fix|updat|delet|schedul|mov|restor|chang|remov|add|generat|approv)(e|es|ing)?\b/i;
 const TASK_TOOLS = new Set([
   "rewrite_post",
   "edit_post",
@@ -29,7 +31,7 @@ const TASK_TOOLS = new Set([
 ]);
 
 const WORKERS = `WORKERS - each task you return is handed to a specialist and runs as its own job after you reply:
-- rewrite_post {post_key, instruction, reference_keys?: ["post_key", ...]} -> the POST WRITER (a strong writing model that already knows the page voice, rules and style guide) rewrites the caption. instruction must be specific and self-contained: what to change, what to keep, and the owner's exact wording rules. reference_keys = posts whose style it should copy (tone, hook type, structure, length). Works on drafts and scheduled posts (scheduled ones are re-scheduled on Facebook automatically).
+- rewrite_post {post_key, instruction, reference_keys?: ["post_key", ...], only_if_opener?: ["phrase", ...]} -> the POST WRITER (a strong writing model that already knows the page voice, rules and style guide) rewrites the caption. instruction must be specific and self-contained: what to change, what to keep, and the owner's exact wording rules. reference_keys = posts whose style it should copy (tone, hook type, structure, length). only_if_opener = phrases that mark the problem; the post is skipped if its opening contains none of them (use it when fixing a bad opener so good posts are left alone). Works on drafts and scheduled posts (scheduled ones are re-scheduled on Facebook automatically).
 - edit_post {post_key, caption?, date?: "YYYY-MM-DD", time?: "HH:MM" (24h Dhaka)} -> exact change. Use caption only when the owner dictated the exact text. date and time go together; time must be 15+ minutes from now.
 - delete_post {post_key} -> moves it to Skipped (restorable). Scheduled posts are taken off Facebook first.
 - restore_post {post_key} -> brings a skipped post back to drafts.
@@ -79,6 +81,24 @@ function line(p: Post) {
 
 function sortPosts(posts: Post[]) {
   return [...posts].sort((a, b) => String(a.planned_time).localeCompare(String(b.planned_time)));
+}
+
+function buildOverview(posts: Post[]) {
+  const today = dhakaDate();
+  const names: Record<string, string> = { [shiftDate(today, -1)]: "YESTERDAY", [today]: "TODAY", [shiftDate(today, 1)]: "TOMORROW" };
+  const byDay = new Map<string, Post[]>();
+  for (const p of sortPosts(posts)) {
+    if (p.post_date < shiftDate(today, -3) || p.status === "rejected") continue;
+    byDay.set(p.post_date, [...(byDay.get(p.post_date) || []), p]);
+  }
+  const days = [...byDay.keys()].sort();
+  if (!days.length) return "(none)";
+  return days
+    .map((d) => {
+      const weekday = new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
+      return `=== ${d} ${weekday}${names[d] ? ` (${names[d]})` : ""} - ${byDay.get(d)!.length} posts ===\n${byDay.get(d)!.map(line).join("\n")}`;
+    })
+    .join("\n");
 }
 
 function str(v: unknown) {
@@ -150,6 +170,11 @@ async function runTool(tool: string, args: Record<string, unknown>): Promise<str
     }
     case "rewrite_post": {
       const p = await findPost(args.post_key);
+      const markers = (Array.isArray(args.only_if_opener) ? args.only_if_opener : []).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+      if (markers.length) {
+        const opener = p.caption.slice(0, 220).toLowerCase();
+        if (!markers.some((m) => opener.includes(m))) return `Skipped ${p.post_key} - its opener is already fine`;
+      }
       let feedback = String(args.instruction || "").trim() || "Stronger hook, more practical and specific";
       const refs = (Array.isArray(args.reference_keys) ? args.reference_keys : []).map(String).filter((k) => k !== p.post_key).slice(0, 3);
       if (refs.length) {
@@ -333,12 +358,13 @@ STATUSES: draft = waiting for ${o.owner}'s review, not on Facebook. scheduled = 
 
 HOW TO DECIDE:
 1. The LAST message from ${o.owner} is the request; earlier messages are context. If the last message only checks on you ("are you there?", "can you read my messages?"), answer it and look back for an earlier request that was never completed (an ASSISTANT error or "took too long" right after it). If one exists, do it now.
-2. Resolve every reference ("today's posts", "the morning post", "yesterday's style", "these") to exact post_keys from POSTS. Never invent post_keys. Never return tasks for published or skipped posts unless asked to restore.
+2. Resolve every reference to exact post_keys from POSTS, using the day headers: "today's posts" = EVERY draft/scheduled/expired post under the (TODAY) header - count them and include all of them; "yesterday" = the (YESTERDAY) header, never another day. Never invent post_keys. Never return tasks for published or skipped posts unless asked to restore.
 3. Categorize and route:
    - question or chat -> answer in reply, no tasks.
    - fix / rewrite / improve specific posts -> one rewrite_post per post, each with a specific instruction.
-   - "I said not to ...", "don't use this kind of ..." -> rewrite the affected upcoming posts AND add the rule with update_style_guide so future posts follow it.
-   - "in X's style" -> rewrite_post with reference_keys pointing at those posts.
+   - complaint about a kind of opener/phrase ("fix these", "I said not to ...", "don't use this kind of ...") -> check the first words of the upcoming draft/scheduled posts (today and tomorrow, plus later days only if asked) and rewrite_post ONLY the ones that show the problem (not only the one quoted), each with only_if_opener listing the bad phrases (e.g. for time-of-day openers: ["সকাল","দুপুর","লাঞ্চ","বিকাল","অলস সময়","সন্ধ্যা","রাত","শান্ত সময়","ঘুমানোর আগে","morning","lunch","evening","night"]). Put an update_style_guide task FIRST whose instruction states the rule in one clear sentence.
+   - "in X's style" / "like yesterday's posts" -> rewrite_post with reference_keys = 2-3 post_keys from that day (prefer published/scheduled ones).
+   - HOOK RULE (always): posts are read at any hour, so never ask a worker for a time-of-day or reader-moment opener (morning/lunch/afternoon/evening/night/bedtime, সকাল/দুপুর/বিকাল/সন্ধ্যা/রাত). To fix a wrong-time opener, tell the writer to replace it with a problem, fact, question or scenario hook.
    - times, dates, deleting, approving, unscheduling -> edit_post / delete_post / approve_post / unschedule_post.
    - posting volume, quotas, voice, rules -> update_settings. Writing preferences -> update_style_guide.
 4. Use lookups only when the first words in POSTS are not enough to decide (for example to read a full caption).
@@ -349,7 +375,7 @@ REPLY: 1-3 short sentences in plain text. Reply in English unless ${o.owner} wri
 TASKS STILL RUNNING FROM EARLIER MESSAGES (do not queue them again):
 ${o.running.length ? o.running.map((r) => `- ${r}`).join("\n") : "(none)"}
 
-POSTS (key | date time | status | format | image | first words):
+POSTS grouped by day (key | date time | status | format | image | first words):
 ${o.overview}
 
 CONVERSATION:
@@ -363,14 +389,13 @@ Return ONLY this JSON: {"lookups":[{"tool":"get_post","args":{"post_key":"..."}}
 export async function planTurn(history: ChatMsg[], running: string[] = []): Promise<{ reply: string; tasks: PlannedTask[] }> {
   const [cfg, posts] = await Promise.all([getConfig(), getPosts()]);
   const owner = cfg.owner_name || "the owner";
-  const from = shiftDate(dhakaDate(), -3);
-  const overview = sortPosts(posts).filter((p) => p.post_date >= from && p.status !== "rejected").map(line).join("\n") || "(none)";
+  const overview = buildOverview(posts);
   const lookups: string[] = [];
+  let nudged = false;
 
-  for (let round = 0; round <= MAX_LOOKUP_ROUNDS; round++) {
+  for (let round = 0; round <= MAX_LOOKUP_ROUNDS + 1; round++) {
     const r = await askRouter(buildRouterPrompt({ owner, pageName: cfg.page_name || "", history, overview, running, lookups }));
-    const out = parseJson(String(r.text || ""));
-    const wanted = (Array.isArray(out.lookups) ? out.lookups : []).filter((l) => LOOKUP_TOOLS.has(l.tool)).slice(0, 10);
+    const out = parseJson(String(r.text || ""));    const wanted = (Array.isArray(out.lookups) ? out.lookups : []).filter((l) => LOOKUP_TOOLS.has(l.tool)).slice(0, 10);
     if (wanted.length && round < MAX_LOOKUP_ROUNDS) {
       for (const l of wanted) {
         const args = l.args && typeof l.args === "object" ? l.args : {};
@@ -382,13 +407,32 @@ export async function planTurn(history: ChatMsg[], running: string[] = []): Prom
       }
       continue;
     }
+    const lastAsk = [...history].reverse().find((m) => m.from === "me")?.text || "";
+    const seen = new Set<string>();
     const tasks = (Array.isArray(out.tasks) ? out.tasks : [])
       .filter((t) => t && TASK_TOOLS.has(t.tool))
-      .slice(0, MAX_TASKS)
       .map((t) => {
-        const args = t.args && typeof t.args === "object" ? t.args : {};
-        return { tool: t.tool, args, label: describe(t.tool, args) };
-      });
+        const args = { ...(t.args && typeof t.args === "object" ? t.args : {}) };
+        if (t.tool === "update_style_guide" && !String(args.instruction || "").trim()) args.instruction = lastAsk;
+        return { tool: t.tool, args };
+      })
+      .filter((t) => {
+        const needsKey = !["update_settings", "update_style_guide", "generate_drafts"].includes(t.tool);
+        if (needsKey && !t.args.post_key) return false;
+        const id = `${t.tool}:${String(t.args.post_key || "")}`;
+        if (needsKey && seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      .sort((a, b) => Number(!GLOBAL_FIRST.has(a.tool)) - Number(!GLOBAL_FIRST.has(b.tool)))
+      .slice(0, MAX_TASKS)
+      .map((t) => ({ ...t, label: describe(t.tool, t.args) }));
+    const said = String(out.reply || "").trim();
+    if (!tasks.length && !nudged && PROMISES_WORK.test(said) && !said.endsWith("?")) {
+      nudged = true;
+      lookups.push(`NOTE: your reply said "${said.slice(0, 200)}" but you returned no tasks, so nothing would happen. Return the tasks that do it.`);
+      continue;
+    }
     return { reply: String(out.reply || (tasks.length ? "On it." : "Sorry, I didn't catch that. Could you say it another way?")).trim(), tasks };
   }
   return { reply: "I couldn't work out what to do. Could you say it another way?", tasks: [] };
